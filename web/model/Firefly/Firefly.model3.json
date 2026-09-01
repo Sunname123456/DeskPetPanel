@@ -1,0 +1,29 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "Firefly.moc3",
+    "Textures": [
+      "Firefly.4096/texture_00.png"
+    ],
+    "Physics": "Firefly.physics3.json",
+    "Expressions": [
+      { "Name": "墨镜", "File": "expression/expression1.exp3.json" },
+      { "Name": "猫耳", "File": "expression/expression2.exp3.json" },
+      { "Name": "裂开", "File": "expression/expression3.exp3.json" }
+    ],
+    "Motions": {
+      "动作组": [
+        { "Name": "回正", "File": "animations/Scene0.motion3.json", "Sound": "voice/音频回正.mp3" },
+        { "Name": "猫耳", "File": "animations/Scene02.motion3.json", "Sound": "voice/meow.mp3" },
+        { "Name": "思考", "File": "animations/Scene4.motion3.json" },
+        { "Name": "会萤的", "File": "animations/Scene22.motion3.json", "Sound": "voice/会萤的.mp3" },
+        { "Name": "使一颗心免于哀伤", "File": "animations/Scene26710.motion3.json", "Sound": "voice/无梦-若风 - 使一颗心免于哀伤-流萤.mp3" }
+      ]
+    }
+  },
+  "Groups": [
+    { "Target": "Parameter", "Name": "EyeBlink", "Ids": ["ParamEyeLOpen", "ParamEyeROpen"] },
+    { "Target": "Parameter", "Name": "LipSync", "Ids": [] }
+  ],
+  "HitAreas": []
+}

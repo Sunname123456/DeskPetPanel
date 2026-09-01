@@ -1,0 +1,33 @@
+name: Validate source and assets
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Parse Python source
+        shell: pwsh
+        run: python -m py_compile panel.py
+
+      - name: Validate JSON assets
+        shell: pwsh
+        run: |
+          python -c "import json,pathlib; files=list(pathlib.Path('web').rglob('*.json')); [json.loads(p.read_text(encoding='utf-8-sig')) for p in files]; print(f'validated {len(files)} JSON files')"
+
+      - name: Run front-end interaction regression
+        shell: pwsh
+        run: node tests/test_pet_runtime.js

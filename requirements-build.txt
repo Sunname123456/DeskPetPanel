@@ -1,0 +1,6 @@
+PyQt6==6.10.2
+PyQt6-Qt6==6.10.2
+PyQt6_sip==13.10.2
+PyQt6-WebEngine==6.10.0
+PyQt6-WebEngine-Qt6==6.10.2
+PyInstaller==6.22.2

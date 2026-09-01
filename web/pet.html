@@ -1,0 +1,863 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+  #pet-stage { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+  #live2d-layer { position: absolute; inset: 0; z-index: 1; }
+  #live2d-layer canvas { position: absolute; inset: 0; display: block; }
+  #action-layer { position: absolute; inset: 0; z-index: 2; display: none;
+                  align-items: flex-end; justify-content: center; }
+  #action-canvas { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
+  #bubble-layer { position: absolute; top: 3%; right: 3%; z-index: 3; display: none;
+                  width: 39%; height: 39%; align-items: flex-start; justify-content: flex-end; }
+  #bubble-image { max-width: 100%; max-height: 100%; border-radius: 13%;
+                  filter: drop-shadow(0 2px 5px rgba(0,0,0,.35)); }
+  #voice-caption { position: absolute; left: 8%; right: 8%; bottom: 3%; z-index: 4;
+                   display: none; padding: 5px 9px; border-radius: 10px;
+                   color: #fff; background: rgba(26,28,36,.72); text-align: center;
+                   font: 600 12px/1.35 "Microsoft YaHei UI", sans-serif;
+                   text-shadow: 0 1px 2px rgba(0,0,0,.65); }
+</style>
+<script src="libs/live2dcubismcore.min.js"></script>
+<script src="libs/pixi.min.js"></script>
+<script src="libs/live2d-bridge.min.js"></script>
+<script src="extras/manifest.js"></script>
+</head>
+<body>
+<div id="pet-stage">
+  <div id="live2d-layer"></div>
+  <div id="action-layer"><canvas id="action-canvas" width="275" height="268"></canvas></div>
+  <div id="bubble-layer"><img id="bubble-image" alt=""></div>
+  <div id="voice-caption"></div>
+</div>
+<script>
+const MOTION_COUNT = 5;
+const EXPR_COUNT = 3;
+let app = null;
+let model = null;
+let petDragging = false;
+let petSuspended = false;
+let petVolume = 0.5;
+let randomMotionTimer = null;
+let motionEpoch = 0;
+let interactionEpoch = 0;
+let randomModelCleanupTimer = null;
+let autoInteractionTimer = null;
+let autoInteractionIntervalMs = 0;
+let autoInteractionGeneration = 0;
+let autoBlockedUntil = 0;
+window.petReady = false;
+window.petExtrasReady = false;
+
+const extraAssets = window.PET_EXTRA_ASSETS || { actions: {}, bubbles: {}, voices: {} };
+window.petExtrasReady = !!window.PET_EXTRA_ASSETS;
+const live2dLayer = document.getElementById("live2d-layer");
+const actionLayer = document.getElementById("action-layer");
+const actionCanvas = document.getElementById("action-canvas");
+const actionContext = actionCanvas.getContext("2d");
+const bubbleLayer = document.getElementById("bubble-layer");
+const bubbleImage = document.getElementById("bubble-image");
+const voiceCaption = document.getElementById("voice-caption");
+
+const extraState = {
+  destroyed: false,
+  action: null,
+  actionToken: 0,
+  actionTimer: null,
+  bubbleToken: 0,
+  bubbleTimer: null,
+  bubbleDeadline: 0,
+  bubbleRemaining: 0,
+  voice: null,
+  voiceToken: 0,
+  voiceAttempt: null,
+  resumeVoiceAfterDrag: false
+};
+
+if (window.petExtrasReady) {
+  const actionFrames = Object.values(extraAssets.actions || {})
+    .reduce((count, item) => count + (item.frames || []).length, 0);
+  const bubbleGroups = Object.values(extraAssets.bubbles || {});
+  const bubbleMoods = bubbleGroups
+    .reduce((count, group) => count + Object.keys(group.items || {}).length, 0);
+  const bubbleFiles = bubbleGroups.reduce(
+    (count, group) => count + Object.values(group.items || {})
+      .reduce((subtotal, item) => subtotal + (item.files || []).length, 0), 0);
+  const voices = Object.values(extraAssets.voices || {})
+    .reduce((count, group) => count + (group.items || []).length, 0);
+  console.log(`PET_EXTRAS_READY ${Object.keys(extraAssets.actions || {}).length}/${actionFrames} ${bubbleMoods}/${bubbleFiles} ${voices}`);
+}
+
+function assetURL(path) {
+  return new URL(path, document.baseURI).href;
+}
+
+function randomItem(items) {
+  return items.length ? items[Math.floor(Math.random() * items.length)] : null;
+}
+
+function allVoiceChoices() {
+  return Object.values(extraAssets.voices || {})
+    .flatMap((group) => group.items || []);
+}
+
+function allBubbleChoices() {
+  const choices = [];
+  for (const [category, group] of Object.entries(extraAssets.bubbles || {})) {
+    for (const mood of Object.keys(group.items || {})) choices.push({ category, mood });
+  }
+  return choices;
+}
+
+function allActionChoices() {
+  const choices = Object.keys(extraAssets.actions || {})
+    .map((key) => ({ kind: "sprite", key }));
+  if (model) {
+    for (const index of [0, 1, 2, 3]) choices.push({ kind: "model", index });
+  }
+  return choices;
+}
+
+function clearAutoInteraction() {
+  if (autoInteractionTimer !== null) {
+    clearTimeout(autoInteractionTimer);
+    autoInteractionTimer = null;
+  }
+}
+
+function scheduleAutoInteraction() {
+  clearAutoInteraction();
+  const generation = ++autoInteractionGeneration;
+  if (!window.petReady || !model || !window.petExtrasReady || autoInteractionIntervalMs <= 0 || petDragging ||
+      petSuspended || extraState.destroyed || document.hidden || extraState.action ||
+      extraState.voice || bubbleImage.getAttribute("src") || randomModelCleanupTimer !== null) return;
+  const blockedFor = Math.max(0, autoBlockedUntil - performance.now());
+  const delay = blockedFor > 0
+    ? blockedFor + autoInteractionIntervalMs
+    : autoInteractionIntervalMs;
+  autoInteractionTimer = setTimeout(() => {
+    autoInteractionTimer = null;
+    if (generation !== autoInteractionGeneration) return;
+    if (petDragging || petSuspended || extraState.destroyed || document.hidden) {
+      scheduleAutoInteraction();
+      return;
+    }
+    const result = window.petRandomExtra("auto");
+    if (result === false) scheduleAutoInteraction();
+  }, delay);
+}
+
+function clearRandomModelCleanup() {
+  if (randomModelCleanupTimer !== null) {
+    clearTimeout(randomModelCleanupTimer);
+    randomModelCleanupTimer = null;
+  }
+}
+
+function beginInteraction(source, type, index = null) {
+  clearRandomModelCleanup();
+  clearAutoInteraction();
+  autoInteractionGeneration += 1;
+  interactionEpoch += 1;
+  autoBlockedUntil = source === "manual" && type === "model" && Number(index) === 4
+    ? performance.now() + 203000
+    : 0;
+  return interactionEpoch;
+}
+
+function scheduleRandomModelCleanup(epoch) {
+  clearRandomModelCleanup();
+  randomModelCleanupTimer = setTimeout(() => {
+    randomModelCleanupTimer = null;
+    if (epoch !== interactionEpoch || petDragging || petSuspended || extraState.destroyed) return;
+    motionEpoch += 1;
+    try { model && model.internalModel.motionManager.stopAllMotions(); } catch (_) {}
+    try {
+      const manager = soundManager();
+      if (manager) manager.destroy();
+    } catch (_) {}
+    syncPetRuntime();
+  }, 2300);
+  scheduleAutoInteraction();
+}
+
+function clearActionTimer() {
+  if (extraState.actionTimer !== null) {
+    clearTimeout(extraState.actionTimer);
+    extraState.actionTimer = null;
+  }
+}
+
+function drawActionFrame() {
+  const state = extraState.action;
+  if (!state || !state.images.length) return;
+  const image = state.images[state.index];
+  actionContext.clearRect(0, 0, actionCanvas.width, actionCanvas.height);
+  const x = Math.round((actionCanvas.width - image.naturalWidth) / 2);
+  const y = actionCanvas.height - image.naturalHeight;
+  actionContext.drawImage(image, x, y);
+}
+
+function scheduleActionFrame() {
+  clearActionTimer();
+  const state = extraState.action;
+  if (!state || petDragging || petSuspended || extraState.destroyed) return;
+  extraState.actionTimer = setTimeout(() => {
+    extraState.actionTimer = null;
+    if (state !== extraState.action || petDragging || petSuspended || extraState.destroyed) return;
+    state.index += 1;
+    if (state.index >= state.images.length) {
+      if (state.loop) state.index = 0;
+      else {
+        stopExtraAction(true);
+        return;
+      }
+    }
+    drawActionFrame();
+    scheduleActionFrame();
+  }, state.frameMs);
+}
+
+function stopExtraAction(resync = true) {
+  extraState.actionToken += 1;
+  clearActionTimer();
+  extraState.action = null;
+  actionContext.clearRect(0, 0, actionCanvas.width, actionCanvas.height);
+  actionLayer.style.display = "none";
+  live2dLayer.style.visibility = "visible";
+  if (resync) syncPetRuntime();
+  return true;
+}
+
+function loadActionImage(path) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("action image failed: " + path));
+    image.src = assetURL(path);
+  });
+}
+
+window.petPlayAction = async function (key, options = {}) {
+  const definition = extraAssets.actions[key];
+  if (!definition || petSuspended || extraState.destroyed) return false;
+  beginInteraction(options.source || "api", "sprite", key);
+  stopExtraAction(false);
+  hideExtraBubble();
+  if (!options.keepVoice) stopExtraVoice();
+  motionEpoch += 1;
+  try {
+    model && model.internalModel.motionManager.stopAllMotions();
+    const manager = soundManager();
+    if (manager) manager.destroy();
+  } catch (_) {}
+  const token = ++extraState.actionToken;
+  try {
+    const images = await Promise.all(definition.frames.map(loadActionImage));
+    if (token !== extraState.actionToken || petDragging || petSuspended || extraState.destroyed) return false;
+    const requestedFrameMs = Number(options.frameMs ?? definition.frameMs ?? 200);
+    const frameMs = Number.isFinite(requestedFrameMs)
+      ? Math.max(60, Math.min(5000, requestedFrameMs))
+      : 200;
+    extraState.action = {
+      key,
+      images,
+      index: 0,
+      frameMs,
+      loop: options.loop === undefined ? !!definition.loop : !!options.loop
+    };
+    drawActionFrame();
+    live2dLayer.style.visibility = "hidden";
+    actionLayer.style.display = "flex";
+    syncPetRuntime();
+    return true;
+  } catch (error) {
+    console.log("PET_ACTION_FAIL " + error);
+    if (token === extraState.actionToken) stopExtraAction(true);
+    return false;
+  }
+};
+
+window.petStopAction = function () {
+  return stopExtraAction(true);
+};
+
+function clearBubbleTimer() {
+  if (extraState.bubbleTimer !== null) {
+    clearTimeout(extraState.bubbleTimer);
+    extraState.bubbleTimer = null;
+  }
+}
+
+function hideExtraBubble(resync = false) {
+  extraState.bubbleToken += 1;
+  clearBubbleTimer();
+  extraState.bubbleDeadline = 0;
+  extraState.bubbleRemaining = 0;
+  bubbleLayer.style.display = "none";
+  bubbleImage.removeAttribute("src");
+  if (resync && !petSuspended && !extraState.destroyed) syncPetRuntime();
+  return true;
+}
+
+function scheduleBubbleHide() {
+  clearBubbleTimer();
+  if (!bubbleImage.getAttribute("src") || petDragging || petSuspended || extraState.destroyed) return;
+  const delay = Math.max(50, extraState.bubbleRemaining || 3200);
+  extraState.bubbleDeadline = performance.now() + delay;
+  const token = extraState.bubbleToken;
+  extraState.bubbleTimer = setTimeout(() => {
+    if (token === extraState.bubbleToken) hideExtraBubble(true);
+  }, delay);
+}
+
+function pauseBubbleTimer() {
+  if (extraState.bubbleTimer !== null) {
+    extraState.bubbleRemaining = Math.max(50, extraState.bubbleDeadline - performance.now());
+    clearBubbleTimer();
+  }
+}
+
+window.petShowBubble = function (category, mood, durationMs = 3200, options = {}) {
+  const group = extraAssets.bubbles[category];
+  const definition = group && group.items ? group.items[mood] : null;
+  if (!definition || !definition.files.length || petSuspended || extraState.destroyed) return false;
+  beginInteraction(options.source || "api", "bubble", mood);
+  stopExtraAction(false);
+  stopExtraVoice(false);
+  motionEpoch += 1;
+  try { model && model.internalModel.motionManager.stopAllMotions(); } catch (_) {}
+  try {
+    const manager = soundManager();
+    if (manager) manager.destroy();
+  } catch (_) {}
+  hideExtraBubble();
+  extraState.bubbleToken += 1;
+  const file = definition.files[Math.floor(Math.random() * definition.files.length)];
+  bubbleImage.src = assetURL(file);
+  bubbleLayer.style.display = "flex";
+  extraState.bubbleRemaining = Math.max(500, Number(durationMs) || 3200);
+  if (!petDragging) scheduleBubbleHide();
+  syncPetRuntime();
+  return true;
+};
+
+window.petHideBubble = function () { return hideExtraBubble(true); };
+
+function findVoice(id) {
+  for (const group of Object.values(extraAssets.voices || {})) {
+    const item = (group.items || []).find((candidate) => candidate.id === id);
+    if (item) return item;
+  }
+  return null;
+}
+
+function hideVoiceCaption() {
+  voiceCaption.style.display = "none";
+  voiceCaption.textContent = "";
+}
+
+function expectVoicePause(audio) {
+  const attempt = extraState.voiceAttempt;
+  if (attempt && attempt.audio === audio) attempt.expectedPause = true;
+}
+
+function beginVoicePlayback(audio, token) {
+  const attempt = { audio, token, expectedPause: false };
+  extraState.voiceAttempt = attempt;
+  let pending;
+  try {
+    pending = audio.play();
+  } catch (error) {
+    pending = Promise.reject(error);
+  }
+  Promise.resolve(pending).catch((error) => {
+    if (attempt.expectedPause || extraState.voiceAttempt !== attempt ||
+        token !== extraState.voiceToken || extraState.voice !== audio) return;
+    console.log("PET_VOICE_FAIL " + error);
+    stopExtraVoice(true);
+  });
+}
+
+function stopExtraVoice(resync = false) {
+  extraState.voiceToken += 1;
+  extraState.resumeVoiceAfterDrag = false;
+  const audio = extraState.voice;
+  extraState.voice = null;
+  if (audio) expectVoicePause(audio);
+  extraState.voiceAttempt = null;
+  if (audio) {
+    audio.onended = null;
+    audio.onerror = null;
+    try { audio.pause(); } catch (_) {}
+    try { audio.currentTime = 0; } catch (_) {}
+    audio.removeAttribute("src");
+    try { audio.load(); } catch (_) {}
+  }
+  hideVoiceCaption();
+  if (resync && !petSuspended && !extraState.destroyed) syncPetRuntime();
+  return true;
+}
+
+function pauseExtraVoiceForDrag() {
+  const audio = extraState.voice;
+  const attempt = extraState.voiceAttempt;
+  extraState.resumeVoiceAfterDrag = !!(audio && !audio.ended &&
+    (!audio.paused || (attempt && attempt.audio === audio)));
+  if (extraState.resumeVoiceAfterDrag) {
+    expectVoicePause(audio);
+    try { audio.pause(); } catch (_) {}
+  }
+}
+
+function resumeExtraVoiceAfterDrag() {
+  const audio = extraState.voice;
+  const shouldResume = extraState.resumeVoiceAfterDrag;
+  extraState.resumeVoiceAfterDrag = false;
+  if (!shouldResume || !audio || petSuspended || extraState.destroyed) return;
+  const token = extraState.voiceToken;
+  beginVoicePlayback(audio, token);
+}
+
+window.petPlayVoice = function (id, options = {}) {
+  const definition = findVoice(id);
+  if (!definition || petSuspended || extraState.destroyed) return false;
+  beginInteraction(options.source || "api", "voice", id);
+  if (!options.keepAction) stopExtraAction(false);
+  hideExtraBubble();
+  stopExtraVoice(false);
+  motionEpoch += 1;
+  try {
+    model && model.internalModel.motionManager.stopAllMotions();
+    const manager = soundManager();
+    if (manager) manager.destroy();
+  } catch (_) {}
+  const token = ++extraState.voiceToken;
+  const audio = new Audio(assetURL(definition.path));
+  extraState.voice = audio;
+  audio.preload = "auto";
+  audio.volume = petVolume;
+  voiceCaption.textContent = definition.label;
+  voiceCaption.style.display = "block";
+  const finish = () => {
+    if (token === extraState.voiceToken) stopExtraVoice(true);
+  };
+  audio.onended = finish;
+  audio.onerror = finish;
+  beginVoicePlayback(audio, token);
+  syncPetRuntime();
+  return true;
+};
+
+window.petStopVoice = function () { return stopExtraVoice(true); };
+
+window.petPlayExtra = async function (payload = {}) {
+  if (petSuspended || extraState.destroyed) return false;
+  if (payload.action) {
+    const actionOptions = {};
+    if (Object.prototype.hasOwnProperty.call(payload, "loop")) actionOptions.loop = !!payload.loop;
+    if (Object.prototype.hasOwnProperty.call(payload, "frameMs")) actionOptions.frameMs = payload.frameMs;
+    return await window.petPlayAction(payload.action, actionOptions);
+  }
+  if (payload.bubble) {
+    return window.petShowBubble(payload.bubble.category, payload.bubble.mood, payload.bubbleMs || 3200);
+  }
+  if (payload.voice) return window.petPlayVoice(payload.voice);
+  return false;
+};
+
+window.petRandomExtra = function (origin = "click") {
+  if (!window.petReady || !model || petDragging || petSuspended || extraState.destroyed) return false;
+  const pools = [];
+  const actions = allActionChoices();
+  const bubbles = allBubbleChoices();
+  const voices = allVoiceChoices();
+  if (actions.length) pools.push("action");
+  if (bubbles.length) pools.push("bubble");
+  if (voices.length) pools.push("voice");
+  const type = randomItem(pools);
+  if (!type) return false;
+  if (type === "action") {
+    const choice = randomItem(actions);
+    console.log(`PET_RANDOM_PICK ${origin} action ${choice.kind === "model" ? "model:" + choice.index : choice.key}`);
+    if (choice.kind === "model") return playModelMotion(choice.index, 3, null, origin);
+    return window.petPlayAction(choice.key, { loop: false, source: origin });
+  }
+  if (type === "bubble") {
+    const choice = randomItem(bubbles);
+    console.log(`PET_RANDOM_PICK ${origin} bubble ${choice.category}/${choice.mood}`);
+    return window.petShowBubble(choice.category, choice.mood, 3400, { source: origin });
+  }
+  const choice = randomItem(voices);
+  console.log(`PET_RANDOM_PICK ${origin} voice ${choice.id}`);
+  return window.petPlayVoice(choice.id, { source: origin });
+};
+
+window.petSetAutoInterval = function (seconds) {
+  const value = Number(seconds);
+  autoInteractionIntervalMs = Number.isFinite(value) && value > 0
+    ? Math.max(5000, Math.min(7200000, Math.round(value * 1000)))
+    : 0;
+  scheduleAutoInteraction();
+  console.log(`PET_AUTO_INTERVAL ${autoInteractionIntervalMs / 1000}`);
+  return autoInteractionIntervalMs / 1000;
+};
+
+window.petStopInteraction = function () {
+  beginInteraction("stop", "stop");
+  motionEpoch += 1;
+  stopExtraAction(false);
+  hideExtraBubble();
+  stopExtraVoice(false);
+  try { model && model.internalModel.motionManager.stopAllMotions(); } catch (_) {}
+  try {
+    const manager = soundManager();
+    if (manager) manager.destroy();
+  } catch (_) {}
+  syncPetRuntime();
+  return true;
+};
+
+function soundManager() {
+  return window.PIXI && window.PIXI.live2d ? window.PIXI.live2d.SoundManager : null;
+}
+
+function installSoundGuard() {
+  const manager = soundManager();
+  if (!manager || manager.__petEpochGuard) return;
+  const originalAdd = manager.add.bind(manager);
+  const originalPlay = manager.play.bind(manager);
+  manager.add = function (...args) {
+    const audio = originalAdd(...args);
+    if (audio) audio.__petMotionEpoch = motionEpoch;
+    return audio;
+  };
+  manager.play = function (audio) {
+    if (!audio || petSuspended || audio.__petMotionEpoch !== motionEpoch) {
+      try {
+        if (audio) manager.dispose(audio);
+      } catch (_) {}
+      return Promise.resolve();
+    }
+    return originalPlay(audio);
+  };
+  manager.__petEpochGuard = true;
+}
+
+function installMotionGuard() {
+  const manager = model && model.internalModel && model.internalModel.motionManager;
+  if (!manager || manager.__petEpochGuard) return;
+  const originalStart = manager.startMotion.bind(manager);
+  manager.startMotion = function (...args) {
+    if (petSuspended) return Promise.resolve(false);
+    const epoch = motionEpoch;
+    const serial = (manager.__petStartSerial || 0) + 1;
+    manager.__petStartSerial = serial;
+    let pending;
+    try {
+      pending = originalStart(...args);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return Promise.resolve(pending).then((started) => {
+      if (epoch !== motionEpoch || serial !== manager.__petStartSerial ||
+          petSuspended || extraState.destroyed || !!extraState.action) {
+        if (started && serial === manager.__petStartSerial) {
+          try { manager.stopAllMotions(); } catch (_) {}
+          try {
+            const sounds = soundManager();
+            if (sounds) sounds.destroy();
+          } catch (_) {}
+        }
+        return false;
+      }
+      return started;
+    });
+  };
+  manager.__petEpochGuard = true;
+}
+
+function applyPetVolume() {
+  installSoundGuard();
+  const manager = soundManager();
+  if (manager) manager.volume = petVolume;
+  if (extraState.voice) extraState.voice.volume = petVolume;
+}
+
+function clearRandomMotion() {
+  if (randomMotionTimer !== null) {
+    clearTimeout(randomMotionTimer);
+    randomMotionTimer = null;
+  }
+}
+
+function scheduleRandomMotion() {
+  clearRandomMotion();
+  if (!model || petDragging || petSuspended || extraState.destroyed ||
+      extraState.action || extraState.voice || bubbleImage.getAttribute("src") ||
+      autoBlockedUntil > performance.now()) return;
+  randomMotionTimer = setTimeout(() => {
+    randomMotionTimer = null;
+    if (!petDragging && !petSuspended && !extraState.destroyed &&
+        !extraState.action && !extraState.voice && !bubbleImage.getAttribute("src") &&
+        autoBlockedUntil <= performance.now() &&
+        !document.hidden && Math.random() < 0.5) {
+      const ambient = [2, 3];
+      model.motion("动作组", ambient[Math.floor(Math.random() * ambient.length)], 2);
+    }
+    scheduleRandomMotion();
+  }, 9000);
+}
+
+function syncPetRuntime() {
+  const pauseWebGL = petDragging || petSuspended || extraState.destroyed || !!extraState.action;
+  if (model && model.autoUpdate !== !pauseWebGL) model.autoUpdate = !pauseWebGL;
+  if (app && app.ticker) {
+    if (pauseWebGL) app.ticker.stop();
+    else app.ticker.start();
+  }
+  if (pauseWebGL) clearRandomMotion();
+  else {
+    applyPetVolume();
+    scheduleRandomMotion();
+  }
+  if (extraState.action) {
+    if (petDragging || petSuspended) clearActionTimer();
+    else scheduleActionFrame();
+  }
+  if (petSuspended) {
+    try {
+      model && model.internalModel.motionManager.stopAllMotions();
+    } catch (_) {}
+    try {
+      const manager = soundManager();
+      if (manager) manager.destroy();
+    } catch (_) {}
+  }
+  scheduleAutoInteraction();
+}
+
+window.petAspect = function () {
+  if (!model || !model.internalModel) return "";
+  return model.internalModel.originalWidth + "/" + model.internalModel.originalHeight;
+};
+
+function playModelMotion(index, priority = 3, expressionIndex = null, source = "api") {
+  if (!model || petDragging || petSuspended || extraState.destroyed) return false;
+  index = Number(index);
+  const epoch = beginInteraction(source, "model", index);
+  stopExtraAction(false);
+  hideExtraBubble();
+  stopExtraVoice(false);
+  motionEpoch += 1;
+  try { model.internalModel.motionManager.stopAllMotions(); } catch (_) {}
+  try {
+    const manager = soundManager();
+    if (manager) manager.destroy();
+  } catch (_) {}
+  if (Number.isInteger(expressionIndex)) model.expression(expressionIndex);
+  syncPetRuntime();
+  let pendingMotion;
+  try {
+    pendingMotion = model.motion("动作组", index, Number(priority));
+  } catch (error) {
+    autoBlockedUntil = 0;
+    console.log("PET_MODEL_MOTION_FAIL " + error);
+    syncPetRuntime();
+    return false;
+  }
+  Promise.resolve(pendingMotion).catch((error) => {
+    if (epoch !== interactionEpoch) return;
+    clearRandomModelCleanup();
+    autoBlockedUntil = 0;
+    console.log("PET_MODEL_MOTION_FAIL " + error);
+    syncPetRuntime();
+  });
+  if ((source === "click" || source === "auto") && index >= 0 && index <= 3) {
+    scheduleRandomModelCleanup(epoch);
+  }
+  return true;
+}
+
+window.petMotion = function (i) {
+  return playModelMotion(Number(i), 3, null, "api");
+};
+window.petPlayMotion = function (i, expressionIndex = null, source = "manual") {
+  const expression = expressionIndex === null ? null : Number(expressionIndex);
+  return playModelMotion(Number(i), 3, expression, source);
+};
+window.petExpression = function (i) {
+  if (!model || petSuspended || extraState.destroyed) return false;
+  beginInteraction("manual", "expression", i);
+  stopExtraAction(false);
+  hideExtraBubble();
+  stopExtraVoice(false);
+  motionEpoch += 1;
+  try { model.internalModel.motionManager.stopAllMotions(); } catch (_) {}
+  try {
+    const manager = soundManager();
+    if (manager) manager.destroy();
+  } catch (_) {}
+  syncPetRuntime();
+  model.expression(Number(i));
+  return true;
+};
+window.petPlayExpression = window.petExpression;
+window.petInteract = function () { return window.petRandomExtra("click"); };
+window.petFocus = function (nx, ny) {
+  if (model && !petDragging && !petSuspended && !extraState.action) {
+    model.focus(nx * innerWidth, ny * innerHeight);
+  }
+};
+window.petSetDragging = function (dragging) {
+  if (extraState.destroyed) return false;
+  const next = !!dragging;
+  if (next === petDragging) return true;
+  petDragging = next;
+  if (next) {
+    if (randomModelCleanupTimer !== null) {
+      clearRandomModelCleanup();
+      motionEpoch += 1;
+      try { model && model.internalModel.motionManager.stopAllMotions(); } catch (_) {}
+      try {
+        const manager = soundManager();
+        if (manager) manager.destroy();
+      } catch (_) {}
+    }
+    clearActionTimer();
+    pauseBubbleTimer();
+    pauseExtraVoiceForDrag();
+  } else if (!petSuspended) {
+    if (extraState.action) scheduleActionFrame();
+    if (bubbleImage.getAttribute("src")) scheduleBubbleHide();
+    resumeExtraVoiceAfterDrag();
+  }
+  syncPetRuntime();
+  return true;
+};
+window.petSetSuspended = function (suspended) {
+  if (extraState.destroyed) return false;
+  const next = !!suspended;
+  if (next === petSuspended) {
+    syncPetRuntime();
+    return true;
+  }
+  petSuspended = next;
+  if (next) {
+    interactionEpoch += 1;
+    clearRandomModelCleanup();
+    autoBlockedUntil = 0;
+    motionEpoch += 1;
+    stopExtraAction(false);
+    hideExtraBubble();
+    stopExtraVoice(false);
+  }
+  syncPetRuntime();
+  return true;
+};
+window.petSetVolume = function (volume) {
+  const value = Number(volume);
+  petVolume = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.5;
+  applyPetVolume();
+  return petVolume;
+};
+
+window.petDestroy = function () {
+  if (extraState.destroyed) return true;
+  extraState.destroyed = true;
+  petSuspended = true;
+  interactionEpoch += 1;
+  clearRandomModelCleanup();
+  autoBlockedUntil = 0;
+  motionEpoch += 1;
+  stopExtraAction(false);
+  hideExtraBubble();
+  stopExtraVoice(false);
+  clearRandomMotion();
+  clearAutoInteraction();
+  autoInteractionGeneration += 1;
+  try { if (model) model.autoUpdate = false; } catch (_) {}
+  try { if (app && app.ticker) app.ticker.stop(); } catch (_) {}
+  try { model && model.internalModel.motionManager.stopAllMotions(); } catch (_) {}
+  try {
+    const manager = soundManager();
+    if (manager) manager.destroy();
+  } catch (_) {}
+  return true;
+};
+
+window.petDebugState = function () {
+  return {
+    ready: window.petReady,
+    extrasReady: window.petExtrasReady,
+    dragging: petDragging,
+    suspended: petSuspended,
+    destroyed: extraState.destroyed,
+    action: extraState.action ? extraState.action.key : null,
+    actionTimer: extraState.actionTimer !== null,
+    bubble: !!bubbleImage.getAttribute("src"),
+    bubbleTimer: extraState.bubbleTimer !== null,
+    voice: !!extraState.voice,
+    randomTimer: randomMotionTimer !== null,
+    autoTimer: autoInteractionTimer !== null,
+    autoInterval: autoInteractionIntervalMs / 1000,
+    autoGeneration: autoInteractionGeneration,
+    autoBlockedFor: Math.max(0, (autoBlockedUntil - performance.now()) / 1000),
+    interactionEpoch,
+    randomModelCleanup: randomModelCleanupTimer !== null,
+    tickerStarted: !!(app && app.ticker && app.ticker.started),
+    modelAutoUpdate: !!(model && model.autoUpdate),
+    volume: petVolume
+  };
+};
+
+window.addEventListener("beforeunload", window.petDestroy);
+window.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearAutoInteraction();
+    autoInteractionGeneration += 1;
+  } else if (!petSuspended && !extraState.destroyed) {
+    scheduleAutoInteraction();
+  }
+});
+
+function fit() {
+  if (!model) return;
+  const w = model.internalModel.originalWidth;
+  const h = model.internalModel.originalHeight;
+  const r = Math.min(innerWidth / w, innerHeight / h);
+  model.scale.set(r);
+  model.x = (innerWidth - w * r) / 2;
+  model.y = (innerHeight - h * r) / 2;
+}
+
+PIXI.live2d.Live2DModel.from("model/Firefly/Firefly.model3.json", {
+  autoInteract: false,
+  autoUpdate: false,
+  motionPreload: "ALL"
+}).then((m) => {
+  model = m;
+  installSoundGuard();
+  installMotionGuard();
+  app = new PIXI.Application({
+    backgroundAlpha: 0,
+    resizeTo: window,
+    antialias: true
+  });
+  live2dLayer.appendChild(app.view);
+  app.stage.addChild(model);
+  fit();
+  window.addEventListener("resize", fit);
+  applyPetVolume();
+  window.petReady = true;
+  syncPetRuntime();
+  console.log(`PET_RANDOM_READY ${allActionChoices().length}/${allBubbleChoices().length}/${allVoiceChoices().length}`);
+  console.log("PET_READY " + w_str());
+}).catch((e) => console.log("PET_FAIL " + e));
+
+function w_str() { return innerWidth + "x" + innerHeight; }
+</script>
+</body>
+</html>

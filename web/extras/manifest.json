@@ -1,0 +1,451 @@
+{
+  "version": 1,
+  "actions": {
+    "Standby": {
+      "label": "待机",
+      "frames": [
+        "extras/actions/Standby/0.png",
+        "extras/actions/Standby/1.png",
+        "extras/actions/Standby/2.png",
+        "extras/actions/Standby/3.png",
+        "extras/actions/Standby/4.png",
+        "extras/actions/Standby/5.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    },
+    "mention": {
+      "label": "提起",
+      "frames": [
+        "extras/actions/mention/0.png",
+        "extras/actions/mention/1.png",
+        "extras/actions/mention/2.png",
+        "extras/actions/mention/3.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    },
+    "sleep": {
+      "label": "睡觉",
+      "frames": [
+        "extras/actions/sleep/0.png",
+        "extras/actions/sleep/1.png",
+        "extras/actions/sleep/2.png",
+        "extras/actions/sleep/3.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    },
+    "discomfort": {
+      "label": "不舒服",
+      "frames": [
+        "extras/actions/discomfort/0.png",
+        "extras/actions/discomfort/1.png",
+        "extras/actions/discomfort/2.png",
+        "extras/actions/discomfort/3.png",
+        "extras/actions/discomfort/4.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    },
+    "left": {
+      "label": "向左走",
+      "frames": [
+        "extras/actions/left/0.png",
+        "extras/actions/left/1.png",
+        "extras/actions/left/2.png",
+        "extras/actions/left/3.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    },
+    "right": {
+      "label": "向右走",
+      "frames": [
+        "extras/actions/right/0.png",
+        "extras/actions/right/1.png",
+        "extras/actions/right/2.png",
+        "extras/actions/right/3.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    },
+    "eat": {
+      "label": "吃东西",
+      "frames": [
+        "extras/actions/eat/0.png",
+        "extras/actions/eat/1.png",
+        "extras/actions/eat/2.png",
+        "extras/actions/eat/3.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    },
+    "Love": {
+      "label": "比心",
+      "frames": [
+        "extras/actions/Love/0.png",
+        "extras/actions/Love/1.png",
+        "extras/actions/Love/2.png",
+        "extras/actions/Love/3.png",
+        "extras/actions/Love/4.png",
+        "extras/actions/Love/5.png"
+      ],
+      "frameMs": 200,
+      "loop": false
+    }
+  },
+  "bubbles": {
+    "Happy": {
+      "label": "开心",
+      "items": {
+        "expect": {
+          "label": "expect",
+          "files": [
+            "extras/emoji/Happy/expect.gif"
+          ]
+        },
+        "happy": {
+          "label": "happy",
+          "files": [
+            "extras/emoji/Happy/happy.gif",
+            "extras/emoji/Happy/happy_1.gif",
+            "extras/emoji/Happy/happy_2.gif",
+            "extras/emoji/Happy/happy_3.gif",
+            "extras/emoji/Happy/happy_4.png"
+          ]
+        },
+        "exceed": {
+          "label": "exceed",
+          "files": [
+            "extras/emoji/Happy/exceed.gif"
+          ]
+        },
+        "bar": {
+          "label": "bar",
+          "files": [
+            "extras/emoji/Happy/bar.gif"
+          ]
+        },
+        "give": {
+          "label": "give",
+          "files": [
+            "extras/emoji/Happy/give.gif"
+          ]
+        },
+        "large": {
+          "label": "large",
+          "files": [
+            "extras/emoji/Happy/large.gif"
+          ]
+        },
+        "you": {
+          "label": "you",
+          "files": [
+            "extras/emoji/Happy/you.gif"
+          ]
+        },
+        "feel": {
+          "label": "feel",
+          "files": [
+            "extras/emoji/Happy/feel.gif"
+          ]
+        },
+        "seek": {
+          "label": "seek",
+          "files": [
+            "extras/emoji/Happy/seek.gif"
+          ]
+        },
+        "see": {
+          "label": "see",
+          "files": [
+            "extras/emoji/Happy/see.gif"
+          ]
+        },
+        "of": {
+          "label": "of",
+          "files": [
+            "extras/emoji/Happy/of.gif"
+          ]
+        },
+        "sleep": {
+          "label": "sleep",
+          "files": [
+            "extras/emoji/Happy/sleep.gif"
+          ]
+        },
+        "surprise": {
+          "label": "surprise",
+          "files": [
+            "extras/emoji/Happy/surprise.gif"
+          ]
+        },
+        "stick": {
+          "label": "stick",
+          "files": [
+            "extras/emoji/Happy/stick.gif"
+          ]
+        }
+      }
+    },
+    "Sadness": {
+      "label": "难过",
+      "items": {
+        "grievance": {
+          "label": "grievance",
+          "files": [
+            "extras/emoji/Sadness/grievance.gif"
+          ]
+        },
+        "abandoned": {
+          "label": "abandoned",
+          "files": [
+            "extras/emoji/Sadness/abandoned.gif"
+          ]
+        },
+        "no": {
+          "label": "no",
+          "files": [
+            "extras/emoji/Sadness/no.gif"
+          ]
+        }
+      }
+    },
+    "Angry": {
+      "label": "生气",
+      "items": {
+        "angry": {
+          "label": "angry",
+          "files": [
+            "extras/emoji/Angry/angry.gif",
+            "extras/emoji/Angry/angry_1.gif"
+          ]
+        },
+        "very_angry": {
+          "label": "very_angry",
+          "files": [
+            "extras/emoji/Angry/very_angry.gif"
+          ]
+        }
+      }
+    },
+    "Love": {
+      "label": "喜欢",
+      "items": {
+        "like_you": {
+          "label": "like_you",
+          "files": [
+            "extras/emoji/Love/like_you.gif"
+          ]
+        },
+        "love": {
+          "label": "love",
+          "files": [
+            "extras/emoji/Love/love.gif"
+          ]
+        },
+        "ok": {
+          "label": "ok",
+          "files": [
+            "extras/emoji/Love/ok.gif"
+          ]
+        }
+      }
+    },
+    "Lovely": {
+      "label": "可爱",
+      "items": {
+        "lovely": {
+          "label": "lovely",
+          "files": [
+            "extras/emoji/Lovely/lovely.png"
+          ]
+        },
+        "me": {
+          "label": "me",
+          "files": [
+            "extras/emoji/Lovely/me.gif"
+          ]
+        },
+        "neow": {
+          "label": "neow",
+          "files": [
+            "extras/emoji/Lovely/neow.gif"
+          ]
+        },
+        "want": {
+          "label": "want",
+          "files": [
+            "extras/emoji/Lovely/want.gif"
+          ]
+        },
+        "peeping": {
+          "label": "peeping",
+          "files": [
+            "extras/emoji/Lovely/peeping.png"
+          ]
+        }
+      }
+    },
+    "Lech": {
+      "label": "坏笑",
+      "items": {
+        "lech": {
+          "label": "lech",
+          "files": [
+            "extras/emoji/Lech/lech.gif"
+          ]
+        }
+      }
+    }
+  },
+  "voices": {
+    "greeting": {
+      "label": "日常问候",
+      "items": [
+        {
+          "id": "早安！要不要尝一尝我新做的橡木蛋糕卷呢？",
+          "label": "早安！要不要尝一尝我新做的橡木蛋糕卷呢？",
+          "path": "extras/audio/早安！要不要尝一尝我新做的橡木蛋糕卷呢？.wav"
+        },
+        {
+          "id": "中午时间也是需要休息的哦！",
+          "label": "中午时间也是需要休息的哦！",
+          "path": "extras/audio/中午时间也是需要休息的哦！.wav"
+        },
+        {
+          "id": "早睡早起，不要熬夜伤身体呀！",
+          "label": "早睡早起，不要熬夜伤身体呀！",
+          "path": "extras/audio/早睡早起，不要熬夜伤身体呀！.wav"
+        },
+        {
+          "id": "我叫流萤，是鸢尾花家系的译者。",
+          "label": "我叫流萤，是鸢尾花家系的译者。",
+          "path": "extras/audio/我叫流萤，是鸢尾花家系的译者。.wav"
+        }
+      ]
+    },
+    "farewell": {
+      "label": "告别约定",
+      "items": [
+        {
+          "id": "我想穿着萨姆去看看日出呢，你要和我一起吗？",
+          "label": "我想穿着萨姆去看看日出呢，你要和我一起吗？",
+          "path": "extras/audio/我想穿着萨姆去看看日出呢，你要和我一起吗？.wav"
+        },
+        {
+          "id": "如果是夏天的话，现在应该是烈日当空吧？那样就可以一起去买冰淇淋了。",
+          "label": "如果是夏天的话，现在应该是烈日当空吧？那样就可以一起去买冰淇淋了。",
+          "path": "extras/audio/如果是夏天的话，现在应该是烈日当空吧？那样就可以一起去买冰淇淋了。.wav"
+        },
+        {
+          "id": "晚安！我们与匹诺康尼再会。",
+          "label": "晚安！我们与匹诺康尼再会。",
+          "path": "extras/audio/晚安！我们与匹诺康尼再会。.wav"
+        },
+        {
+          "id": "啊，你要回去了吗？时间过得真快呀。",
+          "label": "啊，你要回去了吗？时间过得真快呀。",
+          "path": "extras/audio/啊，你要回去了吗？时间过得真快呀。.wav"
+        }
+      ]
+    },
+    "battery": {
+      "label": "电量提醒",
+      "items": [
+        {
+          "id": "电源适配器已经连接了！现在开始，就是性能模式了哦。",
+          "label": "电源适配器已经连接了！现在开始，就是性能模式了哦。",
+          "path": "extras/audio/电源适配器已经连接了！现在开始，就是性能模式了哦。.wav"
+        },
+        {
+          "id": "啊，当前的电量过低了，如果关机了，可就见不到我咯。",
+          "label": "啊，当前的电量过低了，如果关机了，可就见不到我咯。",
+          "path": "extras/audio/啊，当前的电量过低了，如果关机了，可就见不到我咯。.wav"
+        },
+        {
+          "id": "现在的电量保持的不错呢，可以放心玩耍啦！",
+          "label": "现在的电量保持的不错呢，可以放心玩耍啦！",
+          "path": "extras/audio/现在的电量保持的不错呢，可以放心玩耍啦！.wav"
+        },
+        {
+          "id": "电量已经满了呢，要拔掉电源适配器吗？",
+          "label": "电量已经满了呢，要拔掉电源适配器吗？",
+          "path": "extras/audio/电量已经满了呢，要拔掉电源适配器吗？.wav"
+        }
+      ]
+    },
+    "interaction": {
+      "label": "互动彩蛋",
+      "items": [
+        {
+          "id": "你怎么变成这个样子了？",
+          "label": "你怎么变成这个样子了？",
+          "path": "extras/audio/你怎么变成这个样子了？.wav"
+        },
+        {
+          "id": "你知道脾气最好的季节是什么吗？没错，就是夏天。",
+          "label": "你知道脾气最好的季节是什么吗？没错，就是夏天。",
+          "path": "extras/audio/你知道脾气最好的季节是什么吗？没错，就是夏天。.wav"
+        },
+        {
+          "id": "呃，这是在做什么？",
+          "label": "呃，这是在做什么？",
+          "path": "extras/audio/呃，这是在做什么？.wav"
+        },
+        {
+          "id": "啊！踩我！",
+          "label": "啊！踩我！",
+          "path": "extras/audio/啊！踩我！.wav"
+        },
+        {
+          "id": "我将，点燃心海！",
+          "label": "我将，点燃心海！",
+          "path": "extras/audio/我将，点燃心海！.wav"
+        }
+      ]
+    }
+  },
+  "modelMotions": [
+    {
+      "id": 0,
+      "label": "回正",
+      "expression": null
+    },
+    {
+      "id": 1,
+      "label": "猫耳",
+      "expression": 1
+    },
+    {
+      "id": 2,
+      "label": "思考",
+      "expression": null
+    },
+    {
+      "id": 3,
+      "label": "会萤的",
+      "expression": null
+    },
+    {
+      "id": 4,
+      "label": "使一颗心免于哀伤（唱歌）",
+      "expression": null
+    }
+  ],
+  "modelExpressions": [
+    {
+      "id": 0,
+      "label": "墨镜"
+    },
+    {
+      "id": 1,
+      "label": "猫耳"
+    },
+    {
+      "id": 2,
+      "label": "裂开"
+    }
+  ]
+}

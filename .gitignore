@@ -1,0 +1,28 @@
+# Virtual environments
+.venv/
+.venv-*/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Build and release output
+build/
+dist/
+release/
+*.zip
+*.sha256
+
+# Local smoke-test profiles and runtime data
+.smoke-*/
+.workspace_panel/
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
