@@ -4,7 +4,7 @@
 
 ## 下载与安装
 
-1. 下载 Release 附件 `桌宠分享包-v1.0.zip` 和对应 `.sha256` 文件。
+1. 下载 Release 附件 `DeskPetPanel-v1.0.0-windows-x64.zip` 和对应 `.sha256` 文件。
 2. 校验 SHA-256 后完整解压 ZIP。
 3. 双击 `Install-DeskPet.cmd` 安装；也可直接运行 `app\DeskPetPanel.exe`。
 
@@ -13,7 +13,7 @@
 ## 校验值
 
 ```text
-C9558E27C793ABB792AD9CF4B32577E1F2A97BD3E899CE3AF49A47913C167649  桌宠分享包-v1.0.zip
+C9558E27C793ABB792AD9CF4B32577E1F2A97BD3E899CE3AF49A47913C167649  DeskPetPanel-v1.0.0-windows-x64.zip
 ```
 
 ## 本版默认设置

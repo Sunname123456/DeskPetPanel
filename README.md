@@ -30,7 +30,7 @@
 前往仓库的 [Releases](../../releases) 页面，下载：
 
 ```text
-桌宠分享包-v1.0.zip
+DeskPetPanel-v1.0.0-windows-x64.zip
 ```
 
 平台自动生成的 `Source code` 压缩包是源码快照；可直接运行的 Windows 应用位于 Release 附件中。
@@ -47,7 +47,7 @@
 在 PowerShell 中校验：
 
 ```powershell
-Get-FileHash -LiteralPath ".\桌宠分享包-v1.0.zip" -Algorithm SHA256
+Get-FileHash -LiteralPath ".\DeskPetPanel-v1.0.0-windows-x64.zip" -Algorithm SHA256
 ```
 
 重新构建后的哈希会变化，请以对应 Release 页面附带的 `.sha256` 文件为准。
@@ -82,7 +82,7 @@ v1.0.0 的实测构建环境：
 
 ## 安装方法
 
-1. 下载 `桌宠分享包-v1.0.zip`。
+1. 下载 `DeskPetPanel-v1.0.0-windows-x64.zip`。
 2. 将 ZIP **完整解压**到普通文件夹；请从解压后的目录启动。
 3. 可先按上文方法校验 SHA-256。
 4. 双击：
