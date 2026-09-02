@@ -46,6 +46,7 @@ $Py = Join-Path $Venv "Scripts\python.exe"
     --hidden-import PyQt6.QtWebEngineCore `
     --hidden-import PyQt6.QtWebEngineWidgets `
     --hidden-import PyQt6.QtMultimedia `
+    --hidden-import PyQt6.QtMultimediaWidgets `
     (Join-Path $Root "panel.py")
 
 $Exe = Join-Path $Root "dist\DeskPetPanel\DeskPetPanel.exe"

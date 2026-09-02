@@ -36,6 +36,14 @@ try:
 except Exception:
     VIDEO_OK = False
 
+VIDEO_WIDGET_OK = False
+if VIDEO_OK:
+    try:
+        from PyQt6.QtMultimediaWidgets import QVideoWidget
+        VIDEO_WIDGET_OK = True
+    except Exception:
+        pass
+
 WEB_OK = False
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -456,6 +464,27 @@ class Panel(QWidget):
         self._maximized = False
         self._normal_geom = None
 
+        # Let Qt Multimedia present video frames directly.  The previous
+        # QVideoSink -> QImage -> QPainter path copied every decoded frame to
+        # CPU memory and scaled it there, which made 4K wallpapers stutter.
+        self._video_widget = None
+        self._video_dim = None
+        if VIDEO_WIDGET_OK:
+            self._video_widget = QVideoWidget(self)
+            self._video_widget.setAspectRatioMode(
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding
+            )
+            self._video_widget.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+            )
+            self._video_widget.hide()
+            self._video_dim = QWidget(self)
+            self._video_dim.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+            )
+            self._video_dim.setStyleSheet("background: rgba(15, 15, 18, 150);")
+            self._video_dim.hide()
+
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 10, 14, 12)
         root.setSpacing(6)
@@ -510,6 +539,7 @@ class Panel(QWidget):
         self._video_source = None
         self._vf_image = None
         self._sink_connected = False
+        self.sink = None
         self.player = None
         if VIDEO_OK:
             self.player = QMediaPlayer(self)
@@ -523,13 +553,35 @@ class Panel(QWidget):
             self.player.playbackStateChanged.connect(
                 lambda s: dlog(f"playback state {s}")
             )
-            self.sink = QVideoSink(self)
-            self.player.setVideoSink(self.sink)
-            self.sink.videoFrameChanged.connect(self._on_video_frame)
-            self._sink_connected = True
+            if self._video_widget is not None:
+                self.player.setVideoOutput(self._video_widget)
+                dlog("video output backend=direct-widget")
+            else:
+                # Compatibility fallback for environments that do not ship
+                # QtMultimediaWidgets.  It is slower, but keeps video support.
+                self.sink = QVideoSink(self)
+                self.player.setVideoSink(self.sink)
+                self.sink.videoFrameChanged.connect(self._on_video_frame)
+                self._sink_connected = True
+                dlog("video output backend=cpu-painter-fallback")
             self._first_frame_logged = False
         self.rebuild()
         self._load_wallpaper()
+
+    def _layout_video_layers(self):
+        if self._video_widget is None:
+            return
+        self._video_widget.setGeometry(self.rect())
+        self._video_dim.setGeometry(self.rect())
+        self._video_widget.lower()
+        self._video_dim.raise_()
+        for widget in self.children():
+            if (
+                isinstance(widget, QWidget)
+                and widget is not self._video_widget
+                and widget is not self._video_dim
+            ):
+                widget.raise_()
 
     def _on_video_frame(self, frame):
         img = frame.toImage()
@@ -564,11 +616,18 @@ class Panel(QWidget):
             if self._video_source != wp:
                 self._video_source = wp
                 self.player.setSource(QUrl.fromLocalFile(wp))
+            if self._video_widget is not None:
+                self._video_widget.show()
+                self._video_dim.show()
+                self._layout_video_layers()
             self.player.play()
             dlog(f"video play, source={wp}")
         else:
             if self.player:
                 self.player.stop()
+            if self._video_widget is not None:
+                self._video_widget.hide()
+                self._video_dim.hide()
             self._vf_image = None
         self.update()
 
@@ -597,6 +656,10 @@ class Panel(QWidget):
                 y = (self.height() - wp.height()) // 2
                 p.drawPixmap(x, y, wp)
                 p.fillRect(self.rect(), QColor(15, 15, 18, 150))
+            elif self._video_widget is not None and self._video_widget.isVisible():
+                # The child video surface and dim layer paint after their
+                # parent; only provide a neutral background before first frame.
+                p.fillRect(self.rect(), QColor(30, 30, 34, 255))
             elif img is not None and img.width() and img.height():
                 iw, ih = img.width(), img.height()
                 scale = max(self.width() / iw, self.height() / ih)
@@ -741,6 +804,7 @@ class Panel(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self._layout_video_layers()
         if self._maximized:
             self._layout_items()
 
