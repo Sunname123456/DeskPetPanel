@@ -179,7 +179,8 @@ const documentMock = {
   getElementById(id) { return elements.get(id); }
 };
 const mathMock = Object.create(Math);
-mathMock.random = () => 0;
+const randomValues = [];
+mathMock.random = () => randomValues.length ? randomValues.shift() : 0;
 const context = {
   console: { log(message) { logs.push(String(message)); } },
   document: documentMock,
@@ -317,9 +318,19 @@ vm.runInContext(inlineScripts[0][1], context, { filename: "pet-inline.js" });
   context.petSetAutoInterval(0);
 
   motionCalls.length = 0;
+  randomValues.push(0, 0.99);
   await advance(9000);
-  assert.ok(motionCalls.length >= 1, "ambient timer should make a motion with deterministic random");
-  assert.ok(motionCalls.every((call) => call.index === 2 || call.index === 3));
+  assert.strictEqual(motionCalls.at(-1).index, 3,
+    "ambient timer should be able to select the voiced Huiying motion");
+  randomValues.push(0, 0.99);
+  await advance(9000);
+  assert.strictEqual(motionCalls.at(-1).index, 2,
+    "Huiying motion must be excluded during its one-minute cooldown");
+  await advance(45000);
+  randomValues.push(0, 0.99);
+  await advance(9000);
+  assert.strictEqual(motionCalls.at(-1).index, 3,
+    "Huiying motion should be eligible again after one minute");
   assert.strictEqual(await context.petInteract("head"), true);
   assert.strictEqual(context.petDebugState().action, "Standby",
     "legacy petInteract must delegate to the unified random picker");
