@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout,
     QToolButton, QMenu, QFileIconProvider, QFileDialog, QMessageBox, QSizePolicy,
     QDialog, QPushButton, QListWidget, QListWidgetItem, QSlider, QWidgetAction,
-    QGraphicsScene, QGraphicsView, QFrame,
+    QGraphicsScene, QGraphicsView, QFrame, QDialogButtonBox, QFormLayout,
 )
 
 try:
@@ -175,6 +175,7 @@ DEFAULTS = {
     "pet_h": 180,
     "pet_volume": 17,
     "pet_auto_interval_sec": 180,
+    "wallpaper_brightness": 40,
 }
 
 AUTO_INTERVAL_CHOICES = (
@@ -450,6 +451,76 @@ class WallpaperPickerDialog(QDialog):
         self.reject()
 
 
+class SettingsDialog(QDialog):
+    def __init__(self, parent, panel):
+        super().__init__(parent)
+        self.panel = panel
+        self._original_brightness = panel.wallpaper_brightness()
+        self.setWindowTitle("设置")
+        self.setMinimumWidth(420)
+        self.setStyleSheet(
+            "QDialog { background:#26262b; color:#f2f2f7; font:10pt 'Microsoft YaHei UI'; }"
+            "QLabel { color:#f2f2f7; }"
+            "QLabel#settingsHint { color:rgba(255,255,255,130); font:9pt 'Microsoft YaHei UI'; }"
+            "QPushButton { background:#3a3a41; color:#f2f2f7; border:none;"
+            " border-radius:8px; padding:7px 18px; }"
+            "QPushButton:hover { background:#4a4a52; }"
+            "QSlider::groove:horizontal { height:4px; border-radius:2px;"
+            " background:rgba(255,255,255,45); }"
+            "QSlider::sub-page:horizontal { border-radius:2px; background:#7fc8ff; }"
+            "QSlider::handle:horizontal { width:14px; margin:-5px 0; border-radius:7px;"
+            " background:#f7fbff; }"
+        )
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 18, 18, 16)
+        root.setSpacing(14)
+        hint = QLabel("外观和行为参数将集中放在这里，调整时可实时预览。", self)
+        hint.setObjectName("settingsHint")
+        root.addWidget(hint)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(12)
+        brightness_host = QWidget(self)
+        brightness_row = QHBoxLayout(brightness_host)
+        brightness_row.setContentsMargins(0, 0, 0, 0)
+        brightness_row.setSpacing(10)
+        self.brightness_slider = QSlider(Qt.Orientation.Horizontal, brightness_host)
+        self.brightness_slider.setRange(0, 100)
+        self.brightness_slider.setSingleStep(1)
+        self.brightness_slider.setPageStep(10)
+        self.brightness_slider.setValue(self._original_brightness)
+        self.brightness_value = QLabel(f"{self._original_brightness}%", brightness_host)
+        self.brightness_value.setMinimumWidth(44)
+        self.brightness_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        brightness_row.addWidget(self.brightness_slider, stretch=1)
+        brightness_row.addWidget(self.brightness_value)
+        form.addRow("壁纸亮度", brightness_host)
+        root.addLayout(form)
+
+        self.brightness_slider.valueChanged.connect(self._preview_brightness)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        buttons.accepted.connect(self._save)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def _preview_brightness(self, value):
+        self.brightness_value.setText(f"{value}%")
+        self.panel.set_wallpaper_brightness(value, persist=False)
+
+    def _save(self):
+        self.panel.set_wallpaper_brightness(self.brightness_slider.value(), persist=True)
+        self.accept()
+
+    def reject(self):
+        self.panel.set_wallpaper_brightness(self._original_brightness, persist=False)
+        super().reject()
+
+
 class Panel(QWidget):
     def __init__(self, trigger):
         super().__init__()
@@ -501,8 +572,8 @@ class Panel(QWidget):
             self._video_dim.setAttribute(
                 Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
             )
-            self._video_dim.setStyleSheet("background: rgba(15, 15, 18, 150);")
             self._video_dim.hide()
+            self._apply_wallpaper_brightness()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 10, 14, 12)
@@ -613,6 +684,37 @@ class Panel(QWidget):
                 dlog(f"first frame {img.width()}x{img.height()}")
             self.update()
 
+    @staticmethod
+    def wallpaper_brightness():
+        try:
+            value = int(cfg.get("wallpaper_brightness", 40))
+        except (TypeError, ValueError):
+            value = 40
+        return max(0, min(100, value))
+
+    def _wallpaper_dim_alpha(self):
+        return round(255 * (100 - self.wallpaper_brightness()) / 100)
+
+    def _apply_wallpaper_brightness(self):
+        if self._video_dim is not None:
+            self._video_dim.setStyleSheet(
+                f"background: rgba(0, 0, 0, {self._wallpaper_dim_alpha()});"
+            )
+        self.update()
+
+    def set_wallpaper_brightness(self, value, persist=True):
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            value = 40
+        cfg["wallpaper_brightness"] = max(0, min(100, value))
+        self._apply_wallpaper_brightness()
+        if persist:
+            save_cfg()
+
+    def open_settings(self):
+        SettingsDialog(self, self).exec()
+
     def _load_wallpaper(self):
         wp = cfg.get("wallpaper") or ""
         if wp and os.path.exists(wp) and not is_video_path(wp):
@@ -676,7 +778,7 @@ class Panel(QWidget):
                 x = (self.width() - wp.width()) // 2
                 y = (self.height() - wp.height()) // 2
                 p.drawPixmap(x, y, wp)
-                p.fillRect(self.rect(), QColor(15, 15, 18, 150))
+                p.fillRect(self.rect(), QColor(0, 0, 0, self._wallpaper_dim_alpha()))
             elif self._video_view is not None and self._video_view.isVisible():
                 # The child video surface and dim layer paint after their
                 # parent; only provide a neutral background before first frame.
@@ -688,7 +790,7 @@ class Panel(QWidget):
                 x, y = (self.width() - w) // 2, (self.height() - h) // 2
                 p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
                 p.drawImage(QRectF(x, y, w, h), img)
-                p.fillRect(self.rect(), QColor(15, 15, 18, 150))
+                p.fillRect(self.rect(), QColor(0, 0, 0, self._wallpaper_dim_alpha()))
             else:
                 p.fillRect(self.rect(), QColor(30, 30, 34, 255))
             return
@@ -1014,6 +1116,8 @@ class Panel(QWidget):
         a_wp.triggered.connect(self.pick_wallpaper)
         a_we = QAction("Wallpaper Engine 壁纸库…", m)
         a_we.triggered.connect(self.pick_we_wallpaper)
+        a_settings = QAction("设置…", m)
+        a_settings.triggered.connect(self.open_settings)
         m.addAction(a_add)
         m.addAction(a_dir)
         m.addSeparator()
@@ -1023,6 +1127,8 @@ class Panel(QWidget):
             a_wpc = QAction("清除最大化壁纸", m)
             a_wpc.triggered.connect(self.clear_wallpaper)
             m.addAction(a_wpc)
+        m.addSeparator()
+        m.addAction(a_settings)
         m.exec(e.globalPos())
 
     def pick_wallpaper(self):
@@ -1199,6 +1305,8 @@ class Trigger(QWidget):
         a_auto.setCheckable(True)
         a_auto.setChecked(autostart_enabled())
         a_auto.toggled.connect(self._set_autostart)
+        a_settings = QAction("设置…", m)
+        a_settings.triggered.connect(self.panel.open_settings)
         a_restore = QAction("全部恢复到桌面", m)
         a_restore.triggered.connect(self._restore_all)
         m.addAction(a_open)
@@ -1207,6 +1315,7 @@ class Trigger(QWidget):
         m.addSeparator()
         m.addAction(a_collapse)
         m.addAction(a_auto)
+        m.addAction(a_settings)
         m.addSeparator()
         m.addAction(a_restore)
         m.addSeparator()
@@ -2159,6 +2268,8 @@ if WEB_OK:
             a_auto.setCheckable(True)
             a_auto.setChecked(autostart_enabled())
             a_auto.toggled.connect(set_autostart)
+            a_settings = QAction("设置…", m)
+            a_settings.triggered.connect(self.panel.open_settings)
             a_restore = QAction("全部恢复到桌面", m)
             a_restore.triggered.connect(self._restore_all)
             a_quit = QAction("退出", m)
@@ -2176,6 +2287,7 @@ if WEB_OK:
             m.addSeparator()
             m.addAction(a_collapse)
             m.addAction(a_auto)
+            m.addAction(a_settings)
             m.addSeparator()
             m.addAction(a_restore)
             m.addSeparator()
