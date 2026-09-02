@@ -20,7 +20,7 @@ import subprocess
 import winreg
 from ctypes import wintypes
 
-from PyQt6.QtCore import Qt, QSize, QFileInfo, QRectF, QTimer, QEvent, QUrl, QEventLoop
+from PyQt6.QtCore import Qt, QSize, QSizeF, QFileInfo, QRectF, QTimer, QEvent, QUrl, QEventLoop
 from PyQt6.QtGui import (
     QPainter, QColor, QPen, QPainterPath, QAction, QActionGroup, QPixmap, QImage, QIcon, QCursor,
 )
@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGridLayout,
     QToolButton, QMenu, QFileIconProvider, QFileDialog, QMessageBox, QSizePolicy,
     QDialog, QPushButton, QListWidget, QListWidgetItem, QSlider, QWidgetAction,
+    QGraphicsScene, QGraphicsView, QFrame,
 )
 
 try:
@@ -36,11 +37,11 @@ try:
 except Exception:
     VIDEO_OK = False
 
-VIDEO_WIDGET_OK = False
+VIDEO_ITEM_OK = False
 if VIDEO_OK:
     try:
-        from PyQt6.QtMultimediaWidgets import QVideoWidget
-        VIDEO_WIDGET_OK = True
+        from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
+        VIDEO_ITEM_OK = True
     except Exception:
         pass
 
@@ -467,17 +468,35 @@ class Panel(QWidget):
         # Let Qt Multimedia present video frames directly.  The previous
         # QVideoSink -> QImage -> QPainter path copied every decoded frame to
         # CPU memory and scaled it there, which made 4K wallpapers stutter.
-        self._video_widget = None
+        self._video_view = None
+        self._video_scene = None
+        self._video_item = None
         self._video_dim = None
-        if VIDEO_WIDGET_OK:
-            self._video_widget = QVideoWidget(self)
-            self._video_widget.setAspectRatioMode(
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding
+        if VIDEO_ITEM_OK:
+            # QVideoWidget uses a native video surface on Windows and can cover
+            # sibling widgets regardless of QWidget stacking order.  A graphics
+            # video item keeps the video in the normal widget composition path,
+            # so launcher icons and header controls remain visible above it.
+            self._video_view = QGraphicsView(self)
+            self._video_view.setFrameShape(QFrame.Shape.NoFrame)
+            self._video_view.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
-            self._video_widget.setAttribute(
+            self._video_view.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self._video_view.setInteractive(False)
+            self._video_view.setAttribute(
                 Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
             )
-            self._video_widget.hide()
+            self._video_scene = QGraphicsScene(self._video_view)
+            self._video_view.setScene(self._video_scene)
+            self._video_item = QGraphicsVideoItem()
+            self._video_item.setAspectRatioMode(
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding
+            )
+            self._video_scene.addItem(self._video_item)
+            self._video_view.hide()
             self._video_dim = QWidget(self)
             self._video_dim.setAttribute(
                 Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
@@ -553,9 +572,9 @@ class Panel(QWidget):
             self.player.playbackStateChanged.connect(
                 lambda s: dlog(f"playback state {s}")
             )
-            if self._video_widget is not None:
-                self.player.setVideoOutput(self._video_widget)
-                dlog("video output backend=direct-widget")
+            if self._video_item is not None:
+                self.player.setVideoOutput(self._video_item)
+                dlog("video output backend=graphics-video-item")
             else:
                 # Compatibility fallback for environments that do not ship
                 # QtMultimediaWidgets.  It is slower, but keeps video support.
@@ -569,16 +588,18 @@ class Panel(QWidget):
         self._load_wallpaper()
 
     def _layout_video_layers(self):
-        if self._video_widget is None:
+        if self._video_view is None:
             return
-        self._video_widget.setGeometry(self.rect())
+        self._video_view.setGeometry(self.rect())
+        self._video_scene.setSceneRect(QRectF(self.rect()))
+        self._video_item.setSize(QSizeF(self.size()))
         self._video_dim.setGeometry(self.rect())
-        self._video_widget.lower()
+        self._video_view.lower()
         self._video_dim.raise_()
         for widget in self.children():
             if (
                 isinstance(widget, QWidget)
-                and widget is not self._video_widget
+                and widget is not self._video_view
                 and widget is not self._video_dim
             ):
                 widget.raise_()
@@ -616,8 +637,8 @@ class Panel(QWidget):
             if self._video_source != wp:
                 self._video_source = wp
                 self.player.setSource(QUrl.fromLocalFile(wp))
-            if self._video_widget is not None:
-                self._video_widget.show()
+            if self._video_view is not None:
+                self._video_view.show()
                 self._video_dim.show()
                 self._layout_video_layers()
             self.player.play()
@@ -625,8 +646,8 @@ class Panel(QWidget):
         else:
             if self.player:
                 self.player.stop()
-            if self._video_widget is not None:
-                self._video_widget.hide()
+            if self._video_view is not None:
+                self._video_view.hide()
                 self._video_dim.hide()
             self._vf_image = None
         self.update()
@@ -656,7 +677,7 @@ class Panel(QWidget):
                 y = (self.height() - wp.height()) // 2
                 p.drawPixmap(x, y, wp)
                 p.fillRect(self.rect(), QColor(15, 15, 18, 150))
-            elif self._video_widget is not None and self._video_widget.isVisible():
+            elif self._video_view is not None and self._video_view.isVisible():
                 # The child video surface and dim layer paint after their
                 # parent; only provide a neutral background before first frame.
                 p.fillRect(self.rect(), QColor(30, 30, 34, 255))
