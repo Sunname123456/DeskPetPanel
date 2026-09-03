@@ -86,12 +86,20 @@ def find_we_workshop_dirs():
                 dirs.append(k)
 
     roots = []
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as k:
-            sp, _ = winreg.QueryValueEx(k, "SteamPath")
-            roots.append(sp)
-    except OSError:
-        pass
+    registry_locations = (
+        (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
+        (winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "InstallPath"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam", "InstallPath"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+    )
+    for hive, key_path, value_name in registry_locations:
+        try:
+            with winreg.OpenKey(hive, key_path) as k:
+                root, _ = winreg.QueryValueEx(k, value_name)
+            if root and root not in roots:
+                roots.append(root)
+        except OSError:
+            pass
     for r in list(roots):
         vdf = os.path.join(r, "steamapps", "libraryfolders.vdf")
         try:
@@ -103,6 +111,28 @@ def find_we_workshop_dirs():
     for r in roots:
         add(os.path.join(r, "steamapps", "workshop", "content", "431960"))
     return dirs
+
+
+def find_we_executable():
+    candidates = []
+    configured = cfg.get("we_executable") if "cfg" in globals() else None
+    if configured:
+        candidates.append(configured)
+    for workshop_dir in find_we_workshop_dirs():
+        install_dir = os.path.normpath(
+            os.path.join(workshop_dir, "..", "..", "..", "common", "wallpaper_engine")
+        )
+        candidates.extend(
+            os.path.join(install_dir, name)
+            for name in ("wallpaper64.exe", "wallpaper32.exe")
+        )
+    seen = set()
+    for candidate in candidates:
+        normalized = os.path.normcase(os.path.abspath(candidate))
+        if normalized not in seen and os.path.isfile(normalized):
+            return normalized
+        seen.add(normalized)
+    return None
 
 
 def list_we_wallpapers():
@@ -118,6 +148,8 @@ def list_we_wallpapers():
                 continue
             pj = os.path.join(folder, "project.json")
             title = sub
+            wallpaper_type = "unknown"
+            preview_name = None
             if os.path.exists(pj):
                 try:
                     with open(pj, encoding="utf-8") as f:
@@ -125,6 +157,8 @@ def list_we_wallpapers():
                     t = obj.get("title")
                     if isinstance(t, str) and t.strip():
                         title = t.strip()
+                    wallpaper_type = str(obj.get("type") or "unknown").lower()
+                    preview_name = obj.get("preview")
                 except Exception:
                     pass
             video = None
@@ -135,11 +169,21 @@ def list_we_wallpapers():
                         break
             except OSError:
                 pass
-            preview = os.path.join(folder, "preview.gif")
+            preview = None
+            preview_candidates = []
+            if isinstance(preview_name, str) and preview_name:
+                preview_candidates.append(os.path.join(folder, preview_name))
+            preview_candidates.extend(
+                os.path.join(folder, name)
+                for name in ("preview.gif", "preview.jpg", "preview.png")
+            )
+            preview = next((p for p in preview_candidates if os.path.isfile(p)), None)
             items.append({
                 "title": title,
+                "type": wallpaper_type,
+                "project": pj if os.path.isfile(pj) else None,
                 "video": video,
-                "preview": preview if os.path.exists(preview) else None,
+                "preview": preview,
             })
     items.sort(key=lambda x: x["title"].lower())
     return items
@@ -169,6 +213,8 @@ DEFAULTS = {
     "trigger_pos": None,
     "close_on_open": True,
     "wallpaper": "",
+    "wallpaper_backend": "local",
+    "we_executable": "",
     "pet_mode": "live2d",
     # Portable defaults mirror the current desktop-pet appearance without
     # copying machine-specific shortcuts, screen coordinates, or wallpaper.
@@ -319,7 +365,22 @@ u32.SetForegroundWindow.argtypes = [wintypes.HWND]
 u32.SetForegroundWindow.restype = wintypes.BOOL
 u32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
 u32.GetWindowLongW.restype = ctypes.c_long
+u32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+u32.SetWindowLongW.restype = ctypes.c_long
 u32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+u32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+u32.GetWindowTextLengthW.restype = ctypes.c_int
+u32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+u32.GetWindowTextW.restype = ctypes.c_int
+u32.SetWindowPos.argtypes = [
+    wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+    ctypes.c_int, ctypes.c_int, wintypes.UINT,
+]
+u32.SetWindowPos.restype = wintypes.BOOL
+u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+u32.ShowWindow.restype = wintypes.BOOL
+u32.IsWindow.argtypes = [wintypes.HWND]
+u32.IsWindow.restype = wintypes.BOOL
 u32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
 u32.MonitorFromPoint.restype = wintypes.HMONITOR
 u32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
@@ -329,6 +390,39 @@ ENUM_PROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
 u32.EnumWindows.argtypes = [ENUM_PROC, wintypes.LPARAM]
 dwmapi = ctypes.windll.dwmapi
 dwmapi.DwmGetWindowAttribute.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
+
+GWL_STYLE = -16
+GWL_EXSTYLE = -20
+WS_CAPTION = 0x00C00000
+WS_THICKFRAME = 0x00040000
+WS_MINIMIZEBOX = 0x00020000
+WS_MAXIMIZEBOX = 0x00010000
+WS_SYSMENU = 0x00080000
+WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_APPWINDOW = 0x00040000
+SW_HIDE = 0
+SWP_NOACTIVATE = 0x0010
+SWP_FRAMECHANGED = 0x0020
+SWP_SHOWWINDOW = 0x0040
+
+
+def find_top_level_window(title):
+    found = [0]
+
+    @ENUM_PROC
+    def callback(hwnd, _):
+        length = u32.GetWindowTextLengthW(hwnd)
+        if length != len(title):
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        u32.GetWindowTextW(hwnd, buf, len(buf))
+        if buf.value == title:
+            found[0] = int(hwnd)
+            return False
+        return True
+
+    u32.EnumWindows(callback, 0)
+    return found[0]
 
 
 def desktop_covered(widget, panel, w, h):
@@ -411,7 +505,7 @@ class WallpaperPickerDialog(QDialog):
         self.listw = QListWidget(self)
         self.listw.setIconSize(QSize(96, 54))
         lay.addWidget(self.listw, stretch=1)
-        lay.addWidget(QLabel("仅支持视频类型的壁纸；双击直接应用"))
+        lay.addWidget(QLabel("由原生渲染窗口播放，支持视频、网页、场景等类型；双击直接应用"))
         row = QHBoxLayout()
         row.addStretch()
         btn_browse = QPushButton("浏览文件夹…", self)
@@ -426,7 +520,13 @@ class WallpaperPickerDialog(QDialog):
         lay.addLayout(row)
         self.items = items
         for it in items:
-            label = it["title"] + ("  ✓" if it["video"] else "  （场景/网页，不支持）")
+            type_label = {
+                "video": "视频",
+                "web": "网页",
+                "scene": "场景",
+                "application": "应用程序",
+            }.get(it.get("type"), it.get("type") or "未知")
+            label = f'{it["title"]}  （{type_label}）'
             lwi = QListWidgetItem(label)
             if it["preview"]:
                 lwi.setIcon(QIcon(it["preview"]))
@@ -442,8 +542,8 @@ class WallpaperPickerDialog(QDialog):
 
     def _apply(self):
         it = self._current()
-        if it and it["video"]:
-            self.chosen = it["video"]
+        if it and it.get("project"):
+            self.chosen = it
             self.accept()
 
     def _browse(self):
@@ -542,7 +642,6 @@ class Panel(QWidget):
         self._video_view = None
         self._video_scene = None
         self._video_item = None
-        self._video_dim = None
         if VIDEO_ITEM_OK:
             # QVideoWidget uses a native video surface on Windows and can cover
             # sibling widgets regardless of QWidget stacking order.  A graphics
@@ -568,12 +667,24 @@ class Panel(QWidget):
             )
             self._video_scene.addItem(self._video_item)
             self._video_view.hide()
-            self._video_dim = QWidget(self)
-            self._video_dim.setAttribute(
-                Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-            )
-            self._video_dim.hide()
-            self._apply_wallpaper_brightness()
+
+        # This overlay also dims externally rendered wallpapers.  Keeping it
+        # in the Qt overlay window leaves the native renderer on the GPU and
+        # keeps launcher controls above both wallpaper backends.
+        self._video_dim = QWidget(self)
+        self._video_dim.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
+        self._video_dim.hide()
+        self._apply_wallpaper_brightness()
+
+        self._external_name = f"DeskPetWorkspace-{os.getpid()}"
+        self._external_source = None
+        self._external_hwnd = 0
+        self._external_deadline = 0.0
+        self._external_timer = QTimer(self)
+        self._external_timer.setInterval(120)
+        self._external_timer.timeout.connect(self._poll_external_wallpaper)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 10, 14, 12)
@@ -659,13 +770,12 @@ class Panel(QWidget):
         self._load_wallpaper()
 
     def _layout_video_layers(self):
-        if self._video_view is None:
-            return
-        self._video_view.setGeometry(self.rect())
-        self._video_scene.setSceneRect(QRectF(self.rect()))
-        self._video_item.setSize(QSizeF(self.size()))
+        if self._video_view is not None:
+            self._video_view.setGeometry(self.rect())
+            self._video_scene.setSceneRect(QRectF(self.rect()))
+            self._video_item.setSize(QSizeF(self.size()))
+            self._video_view.lower()
         self._video_dim.setGeometry(self.rect())
-        self._video_view.lower()
         self._video_dim.raise_()
         for widget in self.children():
             if (
@@ -674,6 +784,139 @@ class Panel(QWidget):
                 and widget is not self._video_dim
             ):
                 widget.raise_()
+        self._sync_external_wallpaper()
+
+    def _external_wallpaper_selected(self):
+        path = cfg.get("wallpaper") or ""
+        return (
+            cfg.get("wallpaper_backend") == "engine"
+            and bool(path)
+            and os.path.isfile(path)
+        )
+
+    def _external_command(self, *args):
+        executable = find_we_executable()
+        if not executable:
+            return False
+        try:
+            subprocess.Popen(
+                [executable, *args],
+                cwd=os.path.dirname(executable),
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            return True
+        except OSError as exc:
+            dlog(f"external wallpaper command failed: {exc}")
+            return False
+
+    def _native_window_geometry(self):
+        rect = wintypes.RECT()
+        if u32.GetWindowRect(int(self.winId()), ctypes.byref(rect)):
+            return (
+                rect.left,
+                rect.top,
+                max(1, rect.right - rect.left),
+                max(1, rect.bottom - rect.top),
+            )
+        g = self.geometry()
+        scale = self.devicePixelRatioF()
+        return tuple(round(value * scale) for value in (g.x(), g.y(), g.width(), g.height()))
+
+    def _start_external_wallpaper(self, source):
+        source = os.path.abspath(source)
+        if self._external_source == source:
+            if self._external_hwnd and u32.IsWindow(self._external_hwnd):
+                self._sync_external_wallpaper()
+                return True
+            if self._external_timer.isActive():
+                return True
+        self._close_external_wallpaper()
+        x, y, width, height = self._native_window_geometry()
+        args = [
+            "-control", "openWallpaper",
+            "-file", source,
+            "-playInWindow", self._external_name,
+            "-width", str(width),
+            "-height", str(height),
+            "-x", str(x),
+            "-y", str(y),
+            "-borderless",
+        ]
+        if not self._external_command(*args):
+            dlog("external wallpaper renderer executable not found")
+            return False
+        self._external_source = source
+        self._external_hwnd = 0
+        self._external_deadline = time.monotonic() + 10.0
+        self._external_timer.start()
+        dlog(f"external wallpaper requested name={self._external_name} source={source}")
+        return True
+
+    def _close_external_wallpaper(self):
+        self._external_timer.stop()
+        had_instance = bool(self._external_source or self._external_hwnd)
+        if self._external_hwnd and u32.IsWindow(self._external_hwnd):
+            u32.ShowWindow(self._external_hwnd, SW_HIDE)
+        self._external_hwnd = 0
+        self._external_source = None
+        self._external_deadline = 0.0
+        if had_instance:
+            self._external_command(
+                "-control", "closeWallpaper", "-location", self._external_name
+            )
+            dlog(f"external wallpaper closed name={self._external_name}")
+
+    def _poll_external_wallpaper(self):
+        if not self._maximized or not self._external_wallpaper_selected():
+            self._close_external_wallpaper()
+            return
+        if not self._external_hwnd or not u32.IsWindow(self._external_hwnd):
+            self._external_hwnd = find_top_level_window(self._external_name)
+            if self._external_hwnd:
+                style = u32.GetWindowLongW(self._external_hwnd, GWL_STYLE)
+                style &= ~(
+                    WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX
+                    | WS_MAXIMIZEBOX | WS_SYSMENU
+                )
+                u32.SetWindowLongW(self._external_hwnd, GWL_STYLE, style)
+                exstyle = u32.GetWindowLongW(self._external_hwnd, GWL_EXSTYLE)
+                exstyle = (exstyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+                u32.SetWindowLongW(self._external_hwnd, GWL_EXSTYLE, exstyle)
+                dlog(f"external wallpaper window found hwnd={self._external_hwnd}")
+                self.update()
+            elif time.monotonic() >= self._external_deadline:
+                self._external_timer.stop()
+                dlog("external wallpaper window lookup timed out")
+                self._external_command(
+                    "-control", "closeWallpaper", "-location", self._external_name
+                )
+                self._external_source = None
+                self._video_dim.hide()
+                self.update()
+                QMessageBox.information(
+                    self,
+                    "工作面板",
+                    "原生壁纸窗口未出现，请先启动壁纸程序后重试。",
+                )
+                return
+        self._sync_external_wallpaper()
+
+    def _sync_external_wallpaper(self):
+        hwnd = self._external_hwnd
+        if not hwnd or not u32.IsWindow(hwnd) or not self._maximized:
+            return
+        x, y, width, height = self._native_window_geometry()
+        ok = u32.SetWindowPos(
+            hwnd,
+            int(self.winId()),
+            x,
+            y,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+        )
+        if not ok:
+            dlog(f"external wallpaper SetWindowPos failed err={ctypes.get_last_error()}")
 
     def _on_video_frame(self, frame):
         img = frame.toImage()
@@ -717,7 +960,12 @@ class Panel(QWidget):
 
     def _load_wallpaper(self):
         wp = cfg.get("wallpaper") or ""
-        if wp and os.path.exists(wp) and not is_video_path(wp):
+        if (
+            cfg.get("wallpaper_backend") != "engine"
+            and wp
+            and os.path.exists(wp)
+            and not is_video_path(wp)
+        ):
             pix = QPixmap(wp)
             self._wallpaper = pix if not pix.isNull() else QPixmap()
         else:
@@ -728,14 +976,28 @@ class Panel(QWidget):
 
     def _apply_wallpaper(self):
         wp = cfg.get("wallpaper") or ""
+        use_external = self._external_wallpaper_selected() and self._maximized
         use_video = (
-            VIDEO_OK
+            not use_external
+            and VIDEO_OK
             and self.player is not None
             and wp
             and is_video_path(wp)
             and os.path.exists(wp)
         )
-        if use_video and self._maximized:
+        if use_external:
+            if self.player:
+                self.player.stop()
+            if self._video_view is not None:
+                self._video_view.hide()
+            self._vf_image = None
+            if self._start_external_wallpaper(wp):
+                self._video_dim.show()
+                self._layout_video_layers()
+            else:
+                self._video_dim.hide()
+        elif use_video and self._maximized:
+            self._close_external_wallpaper()
             if self._video_source != wp:
                 self._video_source = wp
                 self.player.setSource(QUrl.fromLocalFile(wp))
@@ -746,6 +1008,7 @@ class Panel(QWidget):
             self.player.play()
             dlog(f"video play, source={wp}")
         else:
+            self._close_external_wallpaper()
             if self.player:
                 self.player.stop()
             if self._video_view is not None:
@@ -774,7 +1037,13 @@ class Panel(QWidget):
         if self._maximized:
             wp = self._scaled_wallpaper()
             img = self._vf_image
-            if wp is not None:
+            if self._external_source:
+                # The native renderer window is directly behind this
+                # translucent Qt overlay.  Painting transparent pixels here
+                # exposes it while launcher widgets remain interactive.
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+                p.fillRect(self.rect(), QColor(0, 0, 0, 0))
+            elif wp is not None:
                 x = (self.width() - wp.width()) // 2
                 y = (self.height() - wp.height()) // 2
                 p.drawPixmap(x, y, wp)
@@ -1138,12 +1407,15 @@ class Panel(QWidget):
         )
         if p:
             cfg["wallpaper"] = p
+            cfg["wallpaper_backend"] = "local"
             save_cfg()
             self._load_wallpaper()
 
     def pick_we_wallpaper(self):
-        if not VIDEO_OK:
-            QMessageBox.information(self, "工作面板", "视频壁纸支持未安装（缺少 PyQt6-Multimedia）。")
+        if not find_we_executable():
+            QMessageBox.information(
+                self, "工作面板", "未找到原生壁纸渲染程序，请先确认安装目录。"
+            )
             return
         items = list_we_wallpapers()
         if not items:
@@ -1156,7 +1428,8 @@ class Panel(QWidget):
         dlg = WallpaperPickerDialog(self, items)
         dlg.exec()
         if dlg.chosen:
-            cfg["wallpaper"] = dlg.chosen
+            cfg["wallpaper"] = dlg.chosen["project"]
+            cfg["wallpaper_backend"] = "engine"
             save_cfg()
             self._load_wallpaper()
         elif dlg.browse_requested:
@@ -1166,6 +1439,13 @@ class Panel(QWidget):
         d = QFileDialog.getExistingDirectory(self, "选择 Wallpaper Engine 壁纸文件夹")
         if not d:
             return
+        project = os.path.join(d, "project.json")
+        if os.path.isfile(project):
+            cfg["wallpaper"] = project
+            cfg["wallpaper_backend"] = "engine"
+            save_cfg()
+            self._load_wallpaper()
+            return
         found = None
         for f in os.listdir(d):
             if is_video_path(f) and os.path.isfile(os.path.join(d, f)):
@@ -1173,15 +1453,17 @@ class Panel(QWidget):
                 break
         if not found:
             QMessageBox.information(
-                self, "工作面板", "该文件夹里没有视频文件（可能是场景/网页壁纸），暂不支持。"
+                self, "工作面板", "该文件夹里没有 project.json 或可播放的视频文件。"
             )
             return
         cfg["wallpaper"] = found
+        cfg["wallpaper_backend"] = "local"
         save_cfg()
         self._load_wallpaper()
 
     def clear_wallpaper(self):
         cfg["wallpaper"] = ""
+        cfg["wallpaper_backend"] = "local"
         save_cfg()
         self._load_wallpaper()
         self.update()
@@ -2392,6 +2674,9 @@ def main():
         current = _app_state.get("trigger")
         if current is not None and hasattr(current, "_destroy_pet_runtime"):
             current._destroy_pet_runtime()
+        current_panel = _app_state.get("panel")
+        if current_panel is not None:
+            current_panel._close_external_wallpaper()
 
     app.aboutToQuit.connect(cleanup_current_pet)
 
