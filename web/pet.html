@@ -41,6 +41,9 @@ let petDragging = false;
 let petSuspended = false;
 let petVolume = 0.5;
 let randomMotionTimer = null;
+const HUIYING_MOTION_INDEX = 3;
+const HUIYING_COOLDOWN_MS = 60 * 1000;
+let huiyingLastPlayedAt = -Infinity;
 let motionEpoch = 0;
 let interactionEpoch = 0;
 let randomModelCleanupTimer = null;
@@ -604,8 +607,13 @@ function scheduleRandomMotion() {
         !extraState.action && !extraState.voice && !bubbleImage.getAttribute("src") &&
         autoBlockedUntil <= performance.now() &&
         !document.hidden && Math.random() < 0.5) {
-      const ambient = [2, 3];
-      model.motion("动作组", ambient[Math.floor(Math.random() * ambient.length)], 2);
+      const now = performance.now();
+      const ambient = now - huiyingLastPlayedAt >= HUIYING_COOLDOWN_MS
+        ? [2, HUIYING_MOTION_INDEX]
+        : [2];
+      const motionIndex = ambient[Math.floor(Math.random() * ambient.length)];
+      if (motionIndex === HUIYING_MOTION_INDEX) huiyingLastPlayedAt = now;
+      model.motion("动作组", motionIndex, 2);
     }
     scheduleRandomMotion();
   }, 9000);
