@@ -58,7 +58,7 @@ Get-FileHash -LiteralPath ".\DeskPetPanel-v1.1.0-windows-x64.zip" -Algorithm SHA
 |---|---|
 | 操作系统 | Windows 10/11 x64 |
 | 处理器架构 | x86-64 |
-| Python | 已封装在应用中，朋友电脑无需另装 |
+| Python | 已封装在应用中，电脑端无需另装 |
 | 网络 | 内置桌宠和互动资源支持离线运行 |
 | 显卡 | 建议支持 WebGL 2，并使用较新的显卡驱动 |
 | 磁盘空间 | 建议至少预留 700 MiB |
