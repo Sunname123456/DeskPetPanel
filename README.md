@@ -279,7 +279,7 @@ Uninstall-DeskPet.cmd
 ## 从源码运行
 
 ```powershell
-git clone https://github.com/Sunname123456/DeskPetPanel.git
+git clone https://github.com/Sunname123456/Firefly-DeskPetPanel.git
 cd DeskPetPanel
 
 py -3.9 -m venv .venv
