@@ -1,6 +1,6 @@
-# Third-party notices
+# Firefly desktop pet — third-party notices
 
-This package combines the local desktop-panel source with third-party GUI,
+This unofficial fan-made Firefly desktop pet package combines the local desktop-panel source with third-party GUI,
 web-rendering, Live2D, JavaScript, model, image, voice, and music assets.
 
 - The Python GUI bindings used by this build are distributed under GPL v3 or
@@ -11,7 +11,7 @@ web-rendering, Live2D, JavaScript, model, image, voice, and music assets.
 - The bundled PixiJS library carries an MIT header in its source file.
 - The bundled Cubism Core JavaScript file refers to the Live2D proprietary
   redistribution agreement in its header.
-- Character models, artwork, voices, and music may have rights separate from
+- The Firefly character presentation, models, artwork, voices, and music may have rights separate from
   the application code. Verify those rights before publishing the package to a
   broad audience.
 

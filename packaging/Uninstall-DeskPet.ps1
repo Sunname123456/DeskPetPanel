@@ -31,8 +31,12 @@ if (Test-Path -LiteralPath $Config) {
 }
 
 Remove-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "WorkspacePanel" -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath("Desktop")) "桌宠工作面板.lnk") -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath("Programs")) "桌宠工作面板") -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($ShortcutName in @("流萤桌宠工作面板.lnk", "桌宠工作面板.lnk")) {
+    Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath("Desktop")) $ShortcutName) -Force -ErrorAction SilentlyContinue
+}
+foreach ($MenuName in @("流萤桌宠工作面板", "桌宠工作面板")) {
+    Remove-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath("Programs")) $MenuName) -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 $Quoted = $InstallDir.Replace("'", "''")
 $Cleanup = "Start-Sleep -Seconds 2; if (Test-Path -LiteralPath '$Quoted') { Remove-Item -LiteralPath '$Quoted' -Recurse -Force }"

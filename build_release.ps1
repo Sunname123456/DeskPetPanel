@@ -1,5 +1,8 @@
 param(
-    [string]$PythonExe = ""
+    [string]$PythonExe = "",
+    [string]$VenvDir = "",
+    [string]$DistDir = "",
+    [string]$WorkDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +28,7 @@ if ($PythonInfo.major -ne 3 -or $PythonInfo.minor -lt 9 -or $PythonInfo.arch -ne
 }
 Write-Host "Build interpreter: Python $($PythonInfo.version) $($PythonInfo.arch)"
 
-$Venv = Join-Path $Root ".venv-release"
+$Venv = if ($VenvDir) { [IO.Path]::GetFullPath($VenvDir) } else { Join-Path $Root ".venv-release" }
 if (-not (Test-Path -LiteralPath (Join-Path $Venv "Scripts\python.exe"))) {
     & $PythonExe -m venv $Venv
 }
@@ -33,23 +36,16 @@ $Py = Join-Path $Venv "Scripts\python.exe"
 & $Py -m pip install --upgrade pip
 & $Py -m pip install -r (Join-Path $Root "requirements-build.txt")
 
+$Dist = if ($DistDir) { [IO.Path]::GetFullPath($DistDir) } else { Join-Path $Root "dist" }
+$Work = if ($WorkDir) { [IO.Path]::GetFullPath($WorkDir) } else { Join-Path $Root "build" }
 & $Py -m PyInstaller `
     --noconfirm `
     --clean `
-    --noupx `
-    --windowed `
-    --onedir `
-    --name DeskPetPanel `
-    --icon (Join-Path $Root "app.ico") `
-    --version-file (Join-Path $Root "packaging\version_info.txt") `
-    --add-data "web;web" `
-    --hidden-import PyQt6.QtWebEngineCore `
-    --hidden-import PyQt6.QtWebEngineWidgets `
-    --hidden-import PyQt6.QtMultimedia `
-    --hidden-import PyQt6.QtMultimediaWidgets `
-    (Join-Path $Root "panel.py")
+    --distpath $Dist `
+    --workpath $Work `
+    (Join-Path $Root "DeskPetPanel.spec")
 
-$Exe = Join-Path $Root "dist\DeskPetPanel\DeskPetPanel.exe"
+$Exe = Join-Path $Dist "DeskPetPanel\DeskPetPanel.exe"
 if (-not (Test-Path -LiteralPath $Exe)) {
     throw "Build finished without the expected executable."
 }

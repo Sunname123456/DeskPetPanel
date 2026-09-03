@@ -14,20 +14,20 @@ New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Copy-Item -Path (Join-Path $Source "*") -Destination $InstallDir -Recurse -Force
 
 $Shell = New-Object -ComObject WScript.Shell
-$DesktopLink = Join-Path ([Environment]::GetFolderPath("Desktop")) "桌宠工作面板.lnk"
-$StartMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) "桌宠工作面板"
+$DesktopLink = Join-Path ([Environment]::GetFolderPath("Desktop")) "流萤桌宠工作面板.lnk"
+$StartMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) "流萤桌宠工作面板"
 New-Item -ItemType Directory -Path $StartMenuDir -Force | Out-Null
 
-foreach ($Link in @($DesktopLink, (Join-Path $StartMenuDir "桌宠工作面板.lnk"))) {
+foreach ($Link in @($DesktopLink, (Join-Path $StartMenuDir "流萤桌宠工作面板.lnk"))) {
     $Shortcut = $Shell.CreateShortcut($Link)
     $Shortcut.TargetPath = $Exe
     $Shortcut.WorkingDirectory = $InstallDir
     $Shortcut.IconLocation = "$Exe,0"
-    $Shortcut.Description = "桌宠工作面板"
+    $Shortcut.Description = "流萤桌宠工作面板"
     $Shortcut.Save()
 }
 
-$UninstallLink = $Shell.CreateShortcut((Join-Path $StartMenuDir "卸载桌宠工作面板.lnk"))
+$UninstallLink = $Shell.CreateShortcut((Join-Path $StartMenuDir "卸载流萤桌宠工作面板.lnk"))
 $UninstallLink.TargetPath = "powershell.exe"
 $UninstallLink.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $InstallDir "Uninstall-DeskPet.ps1") + '"'
 $UninstallLink.WorkingDirectory = $InstallDir

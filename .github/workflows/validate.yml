@@ -28,6 +28,10 @@ jobs:
         run: |
           python -c "import json,pathlib; files=list(pathlib.Path('web').rglob('*.json')); [json.loads(p.read_text(encoding='utf-8-sig')) for p in files]; print(f'validated {len(files)} JSON files')"
 
+      - name: Run wallpaper catalog regression
+        shell: pwsh
+        run: python -m unittest tests/test_wallpaper_catalog.py
+
       - name: Run front-end interaction regression
         shell: pwsh
         run: node tests/test_pet_runtime.js

@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 0, 0),
-    prodvers=(1, 0, 0, 0),
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -14,13 +14,13 @@ VSVersionInfo(
       StringTable(
         '080404B0',
         [
-          StringStruct('CompanyName', 'Personal desktop utility'),
-          StringStruct('FileDescription', '桌宠工作面板'),
-          StringStruct('FileVersion', '1.0.0'),
+          StringStruct('CompanyName', 'Personal Firefly fan desktop utility'),
+          StringStruct('FileDescription', '流萤桌宠与工作面板'),
+          StringStruct('FileVersion', '1.1.0'),
           StringStruct('InternalName', 'DeskPetPanel'),
           StringStruct('OriginalFilename', 'DeskPetPanel.exe'),
-          StringStruct('ProductName', '桌宠工作面板'),
-          StringStruct('ProductVersion', '1.0.0')
+          StringStruct('ProductName', '流萤桌宠工作面板'),
+          StringStruct('ProductVersion', '1.1.0')
         ]
       )
     ]),
